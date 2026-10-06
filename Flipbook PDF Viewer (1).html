@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flipbook PDF Viewer</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#e5e5e7;--bg2:#f1f1f3;--fg:#1c1c1e;--mut:#77777c;--line:#bdbdc2;--edge:#c9c9cc;--edge2:#a9a9ae}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#19191b;--bg2:#27272a;--fg:#f0f0f2;--mut:#8d8d93;--line:#46464b;--edge:#3c3c40;--edge2:#2e2e32}}
+:root[data-theme="dark"]{--bg:#19191b;--bg2:#27272a;--fg:#f0f0f2;--mut:#8d8d93;--line:#46464b;--edge:#3c3c40;--edge2:#2e2e32}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(ellipse at 50% 40%,var(--bg2),var(--bg) 70%);color:var(--fg);font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none}
+#stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden;touch-action:none}
+#zoomer{transform-origin:50% 50%}
+#book{position:relative;width:calc(var(--pw)*2);height:var(--ph);perspective:2600px;perspective-origin:50% 45%;cursor:grab;transform:translateX(var(--sx,0px));transition:transform .35s ease,opacity .16s}
+#book.drag{cursor:grabbing}
+#book::before{content:"";position:absolute;left:3%;right:3%;bottom:-18px;height:26px;background:rgba(0,0,0,.38);filter:blur(16px);border-radius:50%}
+.page,.f,.b{background:#fff center/100% 100% no-repeat}
+.page{position:absolute;top:0;width:var(--pw);height:var(--ph);z-index:0}
+#L{left:0;border-radius:2px 0 0 2px;box-shadow:-1px 1px 0 var(--edge),-2px 2px 0 var(--edge2),-3px 3px 0 var(--edge)}
+#R{right:0;border-radius:0 2px 2px 0;box-shadow:1px 1px 0 var(--edge),2px 2px 0 var(--edge2),3px 3px 0 var(--edge)}
+.blank{background:transparent!important;box-shadow:none!important}
+.page::before,.f::before,.b::before{content:"";position:absolute;inset:0;background:#000;opacity:var(--s,0);pointer-events:none;z-index:1}
+.page::after,.f::after,.b::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2}
+#L::after{background:linear-gradient(to left,rgba(0,0,0,.4),rgba(0,0,0,.1) 5%,transparent 16%)}
+#R::after{background:linear-gradient(to right,rgba(0,0,0,.4),rgba(0,0,0,.1) 5%,transparent 16%)}
+.leaf{position:absolute;z-index:10;top:0;left:50%;width:var(--pw);height:var(--ph);display:none;pointer-events:none}
+#leafP{transform:scaleX(-1);transform-origin:0 0}
+.leaf>div{position:absolute;inset:0}
+.leaf .im,.leaf .sh{position:absolute;inset:0;background:#fff center/100% 100% no-repeat}
+.leaf .sh{background:none}
+.leaf .im.blank{background:transparent}
+.leaf .flap{transform-origin:0 0}
+.leaf .rem::after{content:"";position:absolute;inset:0;background:linear-gradient(to right,rgba(0,0,0,.4),rgba(0,0,0,.1) 5%,transparent 16%)}
+/* hard covers: rigid board that swings on the spine, no bending */
+.hl{position:absolute;z-index:10;top:0;width:var(--pw);height:var(--ph);transform-style:preserve-3d;display:none;pointer-events:none}
+#hardN{left:50%;transform-origin:left center}#hardP{left:0;transform-origin:right center}
+.hf,.hb{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:#fff center/100% 100% no-repeat;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 0 3px rgba(0,0,0,.08)}
+.hb{transform:rotateY(180deg)}
+.hf::before,.hb::before{content:"";position:absolute;inset:0;border-radius:2px;background:#000;opacity:var(--s,0);pointer-events:none}
+#hardN .hf::after,#hardP .hb::after{content:"";position:absolute;inset:0;background:linear-gradient(to right,rgba(0,0,0,.35),transparent 9%)}
+#hardN .hb::after,#hardP .hf::after{content:"";position:absolute;inset:0;background:linear-gradient(to left,rgba(0,0,0,.35),transparent 9%)}
+#R.cover{border-radius:2px 3px 3px 2px;box-shadow:0 0 0 1px rgba(0,0,0,.3),3px 3px 0 var(--edge2),6px 6px 8px rgba(0,0,0,.22)}
+#L.cover{border-radius:3px 2px 2px 3px;box-shadow:0 0 0 1px rgba(0,0,0,.3),-3px 3px 0 var(--edge2),-6px 6px 8px rgba(0,0,0,.22)}
+#thumbs{display:none;gap:8px;overflow-x:auto;padding:8px 14px;justify-content:flex-start}
+#thumbs.on{display:flex}
+#thumbs div{flex:none;height:84px;aspect-ratio:var(--r,.75);background:#fff center/cover;border:2px solid transparent;border-radius:2px;cursor:pointer;opacity:.75}
+#thumbs div.cur{border-color:var(--fg);opacity:1}
+#bar{display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap;padding:6px 12px 16px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+#bar button,#bar label{background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 0;cursor:pointer}
+#bar button:hover,#bar label:hover{border-color:var(--fg)}
+#bar button:disabled{opacity:.3;cursor:default}
+#num{width:44px;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);font:inherit;text-align:center;padding:4px 0}
+#drop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .2s;font-size:20px;letter-spacing:.2em;text-transform:uppercase;background:color-mix(in srgb,var(--bg) 80%,transparent);z-index:9}
+body.dragging #drop{opacity:1}
+</style>
+</head>
+<body>
+<div id="stage"><div id="zoomer">
+  <div id="book">
+    <div class="page" id="L"></div>
+    <div class="page" id="R"></div>
+    <div class="leaf" id="leafN"></div>
+    <div class="leaf" id="leafP"></div>
+    <div class="hl" id="hardN"><div class="hf"></div><div class="hb"></div></div>
+    <div class="hl" id="hardP"><div class="hf"></div><div class="hb"></div></div>
+  </div>
+</div></div>
+<div id="thumbs"></div>
+<div id="bar">
+  <label>Open PDF<input id="file" type="file" accept="application/pdf" hidden></label>
+  <button id="prev" aria-label="Previous">←</button>
+  <span><input id="num" type="number" min="1" value="1"> / <span id="tot">0</span></span>
+  <button id="next" aria-label="Next">→</button>
+  <button id="zo" aria-label="Zoom out">−</button><button id="zi" aria-label="Zoom in">+</button>
+  <button id="pg">Pages</button><button id="fs">Fullscreen</button><button id="demo">Demo</button>
+</div>
+<div id="drop">Drop PDF</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const stage=$('#stage'),Z=$('#zoomer'),book=$('#book'),L=$('#L'),R=$('#R'),leafN=$('#leafN'),leafP=$('#leafP'),hardN=$('#hardN'),hardP=$('#hardP');
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+let total=0,cur=0,side='R',single=false,busy=false,ratio=.75,renderPage=null,cache={},gen=0,drag=null;
+let z=1,tx=0,ty=0,qual=1,qt,pinch=null,pan=null,lastTap=0,tapT;
+const ptrs=new Map();
+try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}catch(e){}
+
+/* ---------- fold leaves (2D diagonal fold, my own implementation of a corner-peel) ---------- */
+function build(leaf,dir){
+  leaf.innerHTML='<div class="rem"><div class="im"></div></div><div class="cast"></div><div class="flap"><div class="im"></div><div class="sh"></div></div>';
+  leaf.querySelector('.rem .im').style.transform=dir<0?'scaleX(-1)':'';
+  leaf.querySelector('.flap .im').style.transform=dir>0?'scaleX(-1)':'';
+}
+build(leafN,1);build(leafP,-1);
+
+/* ---------- layout ---------- */
+const pw=()=>book.clientWidth/2;
+function size(){
+  single=stage.clientWidth<720;
+  const sw=stage.clientWidth,sh=stage.clientHeight;
+  const h=Math.max(140,single?Math.min(sh-50,(sw-24)/ratio):Math.min(sh-50,(sw-40)/2/ratio));
+  book.style.setProperty('--ph',h+'px');book.style.setProperty('--pw',h*ratio+'px');
+  slide();clampPan();applyZ();
+}
+function slide(){book.style.setProperty('--sx',single?(side==='R'?-1:1)*book.clientHeight*ratio/2+'px':'0px')}
+addEventListener('resize',()=>{size();cache={};gen++;if(total)show()});
+
+/* ---------- page images ---------- */
+function img(n){
+  if(n<1||n>total)return Promise.resolve(null);
+  if(cache[n])return cache[n];
+  const g=gen,sc=Math.min((devicePixelRatio||1)*qual,3.5);
+  const p=renderPage(n,book.clientHeight*sc).then(c=>new Promise(r=>c.toBlob(b=>r(URL.createObjectURL(b)),'image/jpeg',.9)));
+  cache[n]=p;p.catch(()=>{if(g===gen)delete cache[n]});return p;
+}
+function paint(el,u){el.classList.toggle('blank',!u);el.style.backgroundImage=u?`url(${u})`:'none'}
+async function setFace(el,n){const g=gen,u=await img(n);if(g===gen)paint(el,u)}
+async function setLeaf(leaf,fN,bN){
+  const g=gen,[a,b]=await Promise.all([img(fN),img(bN)]);if(g!==gen)return;
+  paint(leaf.querySelector('.rem .im'),a);paint(leaf.querySelector('.flap .im'),b);
+}
+const maxCur=()=>total%2?total-1:total;
+const curPage=()=>single?(side==='L'?cur:cur+1):cur;
+
+async function show(){
+  L.style.setProperty('--s',0);R.style.setProperty('--s',0);
+  slide();
+  await Promise.all([setFace(L,cur),setFace(R,cur+1)]);
+  L.classList.toggle('cover',cur===total&&total>1);R.classList.toggle('cover',cur+1===1||cur+1===total);
+  const n=clamp(curPage()||1,1,total);
+  $('#num').value=n;$('#num').max=total;$('#tot').textContent=total;
+  $('#prev').disabled=single?(cur<=0&&side==='R'||cur===0):cur<=0;
+  $('#next').disabled=single?(cur>=maxCur()&&(side==='R'||cur+1>total)):cur>=maxCur();
+  document.querySelectorAll('#thumbs div').forEach(d=>d.classList.toggle('cur',+d.dataset.n===n||(!single&&+d.dataset.n===(n%2?n+1:n-1)&&n>1&&false)));
+  const t=document.querySelector(`#thumbs div[data-n="${n}"]`);if(t&&$('#thumbs').classList.contains('on'))t.scrollIntoView({inline:'center',block:'nearest'});
+  for(let i=cur-3;i<=cur+6;i++)img(i);
+}
+
+/* ---------- turning ---------- */
+const poly=p=>p.length>2?'polygon('+p.map(q=>q[0].toFixed(1)+'px '+q[1].toFixed(1)+'px').join(',')+')':'polygon(0 0,0 0,0 0)';
+function clipHalf(P,nx,ny,c,le){            // keep the part of polygon P where n·p <= c (le) or >= c
+  const f=p=>(le?1:-1)*(nx*p[0]+ny*p[1]-c),o=[];
+  for(let i=0;i<P.length;i++){
+    const a=P[i],b=P[(i+1)%P.length],fa=f(a),fb=f(b);
+    if(fa<=0)o.push(a);
+    if((fa<0&&fb>0)||(fa>0&&fb<0)){const t=fa/(fa-fb);o.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}
+  }
+  return o;
+}
+// Fold the sheet so its grabbed corner sits at (px,py). Local coords: origin at the spine/top, x runs outward.
+// The fold line is the perpendicular bisector of corner -> target; the folded flap is the mirror image.
+function hardTo(T,px){                    // rigid board: edge follows the cursor, sheet never stretches
+  const W=pw(),th=Math.acos(clamp(px/W,-1,1)),p=th/Math.PI;
+  T.x=px=W*Math.cos(th);T.y=T.cy;
+  T.leaf.style.transform=`rotateY(${-T.dir*th*180/Math.PI}deg)`;
+  T.leaf.style.setProperty('--s',Math.sin(th)*.22);
+  (T.dir>0?R:L).style.setProperty('--s',(1-p)*.32);
+}
+function foldTo(T,px,py){
+  if(T.hard)return hardTo(T,px);
+  const W=pw(),H=book.clientHeight,cy=T.cy,leaf=T.leaf,rem=leaf.children[0],cast=leaf.children[1],flap=leaf.children[2];
+  let x=px,y=py;                                        // paper can't stretch: stay within reach of the spine corners
+  for(const[cx,cc,r]of[[0,cy,W],[0,H-cy,Math.hypot(W,H)],[0,cy,W]]){const dx=x-cx,dy=y-cc,d=Math.hypot(dx,dy);if(d>r){x=cx+dx*r/d;y=cc+dy*r/d}}
+  T.x=x;T.y=y;
+  const ex=W-x,ey=cy-y,d=Math.hypot(ex,ey);
+  if(d<.8){rem.style.clipPath='none';cast.style.display=flap.style.display='none';return}
+  const nx=ex/d,ny=ey/d,c=nx*(W+x)/2+ny*(cy+y)/2,rect=[[0,0],[W,0],[W,H],[0,H]];
+  const far=poly(clipHalf(rect,nx,ny,c,false));
+  rem.style.clipPath=poly(clipHalf(rect,nx,ny,c,true));
+  cast.style.display=flap.style.display='block';cast.style.clipPath=far;flap.style.clipPath=far;
+  flap.style.transform=`matrix(${1-2*nx*nx},${-2*nx*ny},${-2*nx*ny},${1-2*ny*ny},${2*c*nx},${2*c*ny})`;
+  const amt=clamp(d/W,0,1),Lg=Math.abs(W*nx)+Math.abs(H*ny),t=c-nx*W/2-ny*H/2+Lg/2,ang=Math.atan2(nx,-ny)*180/Math.PI;
+  cast.style.background=`linear-gradient(${ang}deg,transparent ${t-1}px,rgba(0,0,0,${.38*amt}) ${t}px,transparent ${t+80}px)`;
+  flap.children[1].style.background=`linear-gradient(${ang}deg,transparent ${t-1}px,rgba(0,0,0,${.3*amt}) ${t}px,rgba(255,255,255,${.1*amt}) ${t+Lg*.35}px,transparent ${t+Lg*.7}px)`;
+}
+const isHard=n=>n===1||n===total;
+async function prep(dir,cy){
+  busy=true;
+  const f=dir>0?cur+1:cur,b=dir>0?cur+2:cur-1,hard=isHard(f)||isHard(b);
+  const leaf=hard?(dir>0?hardN:hardP):(dir>0?leafN:leafP);
+  const under=dir>0?setFace(R,cur+3):setFace(L,cur-2);
+  if(hard){const g=gen,[u,v]=await Promise.all([img(f),img(b),under]);if(g===gen){paint(leaf.querySelector('.hf'),u);paint(leaf.querySelector('.hb'),v)}}
+  else await Promise.all([setLeaf(leaf,f,b),under]);
+  const T={leaf,dir,cy,hard,x:pw(),y:cy};leaf.style.display='block';foldTo(T,T.x,T.y);return T;
+}
+function finish(T,complete,lift){
+  const W=pw(),H=book.clientHeight,x0=T.x,y0=T.y,x1=complete?-W:W,y1=T.cy;
+  const dur=(260+520*Math.abs(x1-x0)/(2*W)+(lift&&!T.hard?120:0))*(T.hard?1.35:1),t0=performance.now(),ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+  (function f(now){
+    const t=clamp((now-t0)/dur,0,1),e=ease(t),bul=lift?(T.cy?-1:1)*H*.32*Math.sin(Math.PI*t):0;
+    foldTo(T,x0+(x1-x0)*e,y0+(y1-y0)*e+bul);
+    if(t<1)return requestAnimationFrame(f);
+    (async()=>{if(complete){cur+=T.dir*2;side=T.dir>0?'L':'R'}await show();T.leaf.style.display='none';T.leaf.style.transform='';busy=false})();
+  })(t0);
+}
+async function flip(dir){
+  if(busy||!total||(dir>0&&cur>=maxCur())||(dir<0&&cur<=0))return;
+  finish(await prep(dir,book.clientHeight),true,true);
+}
+async function nav(dir){
+  if(busy||!total)return;
+  if(!single)return flip(dir);
+  if(dir>0){
+    if(side==='L'&&cur+1<=total){side='R';return show()}
+    if(cur<maxCur())return fade(()=>{cur+=2;side=cur+0>=0?'L':'L'});
+  }else{
+    if(side==='R'&&cur>0){side='L';return show()}
+    if(cur>0)return fade(()=>{cur-=2;side='R'});
+  }
+}
+async function fade(fn){
+  busy=true;book.style.opacity=0;await new Promise(r=>setTimeout(r,170));
+  fn();book.style.transition='opacity .16s';await show();book.style.opacity=1;busy=false;
+}
+
+/* ---------- zoom ---------- */
+function applyZ(){Z.style.transform=`translate(${tx}px,${ty}px) scale(${z})`}
+function clampPan(){
+  if(z<=1){tx=ty=0;return}
+  const bw=single?book.clientWidth/2:book.clientWidth,mx=Math.max(0,(bw*z-stage.clientWidth)/2)+60,my=Math.max(0,(book.clientHeight*z-stage.clientHeight)/2)+60;
+  tx=clamp(tx,-mx,mx);ty=clamp(ty,-my,my);
+}
+function setZoom(nz,cx,cy){
+  nz=clamp(nz,1,4);const r=stage.getBoundingClientRect();
+  const px=(cx==null?0:cx-(r.left+r.width/2)),py=(cy==null?0:cy-(r.top+r.height/2));
+  tx=px-(px-tx)*nz/z;ty=py-(py-ty)*nz/z;z=nz;clampPan();applyZ();
+  clearTimeout(qt);qt=setTimeout(()=>{const q=z>2.2?3:z>1.3?2:1;if(q!==qual&&!busy){qual=q;gen++;cache={};show()}},350);
+}
+stage.addEventListener('wheel',e=>{e.preventDefault();setZoom(z*Math.exp(-e.deltaY*.002),e.clientX,e.clientY)},{passive:false});
+$('#zi').onclick=()=>setZoom(z*1.4);$('#zo').onclick=()=>setZoom(z/1.4);
+
+/* ---------- pointer handling ---------- */
+function tap(x,y,fn){
+  const now=performance.now();
+  if(now-lastTap<300){clearTimeout(tapT);lastTap=0;setZoom(z>1?1:2.5,x,y)}
+  else{lastTap=now;tapT=setTimeout(fn,z>1?1e9:220)}
+}
+function loc(e,dir){            // pointer position in the leaf's local coordinates
+  const r=book.getBoundingClientRect(),s=r.width/book.offsetWidth,sx=r.left+r.width/2;
+  return[(dir>0?e.clientX-sx:sx-e.clientX)/s,(e.clientY-r.top)/s];
+}
+function cancelDrag(){
+  const d=drag;drag=null;book.classList.remove('drag');
+  if(d&&d.prom)d.prom.then(T=>finish(T,false,false));
+}
+book.addEventListener('pointerdown',e=>{
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){cancelDrag();pan=null;const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),z0:z};return}
+  book.setPointerCapture(e.pointerId);
+  if(z>1){pan={sx:e.clientX,sy:e.clientY,tx,ty,moved:false};return}
+  if(busy||!total)return;
+  const r=book.getBoundingClientRect(),dir=e.clientX>r.left+r.width/2?1:-1;
+  if(single){drag={single:1,sx:e.clientX,dir};return}
+  if((dir>0&&cur>=maxCur())||(dir<0&&cur<=0))return;
+  const[u0,v0]=loc(e,dir);
+  drag={dir,sx:e.clientX,x:e.clientX,vx:0,t:performance.now(),prom:null,T:null,u0,v0,cy:v0<book.clientHeight/2?0:book.clientHeight,e};
+});
+function dragTo(d,e){const[u,v]=loc(e,d.dir);foldTo(d.T,pw()+(u-d.u0),d.cy+(v-d.v0))}
+book.addEventListener('pointermove',e=>{
+  if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&ptrs.size>=2){const[a,b]=[...ptrs.values()];setZoom(pinch.z0*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d,(a.x+b.x)/2,(a.y+b.y)/2);return}
+  if(pan){const dx=e.clientX-pan.sx,dy=e.clientY-pan.sy;if(Math.abs(dx)+Math.abs(dy)>4)pan.moved=true;tx=pan.tx+dx;ty=pan.ty+dy;clampPan();applyZ();return}
+  const d=drag;if(!d||d.single)return;
+  const now=performance.now(),dt=Math.max(1,now-d.t);
+  d.vx=.7*d.vx+.3*((e.clientX-d.x)/dt);d.x=e.clientX;d.t=now;d.e=e;
+  if(!d.prom&&Math.abs(e.clientX-d.sx)>5){
+    book.classList.add('drag');
+    d.prom=prep(d.dir,d.cy).then(T=>{d.T=T;dragTo(d,d.e);return T});
+  }
+  if(d.T)dragTo(d,e);
+});
+async function release(e){
+  ptrs.delete(e.pointerId);
+  if(pinch){if(ptrs.size<2)pinch=null;return}
+  if(pan){const p=pan;pan=null;if(!p.moved)tap(e.clientX,e.clientY,()=>{});return}
+  const d=drag;if(!d)return;drag=null;book.classList.remove('drag');
+  if(d.single){const dx=e.clientX-d.sx;if(Math.abs(dx)>40)nav(dx<0?1:-1);else tap(e.clientX,e.clientY,()=>nav(d.dir));return}
+  if(!d.prom){tap(e.clientX,e.clientY,()=>nav(d.dir));return}
+  const T=await d.prom;
+  const fl=Math.abs(d.vx)>.5&&Math.sign(d.vx)===-d.dir,bk=Math.abs(d.vx)>.5&&Math.sign(d.vx)===d.dir;
+  finish(T,fl||(!bk&&T.x<pw()/2),false);   // like turn.js: cross the middle of the page to complete the turn
+}
+book.addEventListener('pointerup',release);
+book.addEventListener('pointercancel',release);
+
+/* ---------- controls ---------- */
+function goTo(n){
+  if(!total||busy)return;
+  n=clamp(n|0,1,total);cur=Math.min(n%2?n-1:n,maxCur());side=n%2?'R':'L';show();
+}
+$('#next').onclick=()=>nav(1);$('#prev').onclick=()=>nav(-1);
+$('#num').onchange=e=>goTo(+e.target.value);
+$('#fs').onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(e){}};
+$('#pg').onclick=()=>{$('#thumbs').classList.toggle('on');setTimeout(()=>{size();show()},30)};
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  if(['ArrowRight','PageDown',' '].includes(e.key))nav(1);
+  if(['ArrowLeft','PageUp'].includes(e.key))nav(-1);
+  if(e.key==='Home')goTo(1);if(e.key==='End')goTo(total);
+  if(e.key==='+'||e.key==='=')setZoom(z*1.4);if(e.key==='-')setZoom(z/1.4);if(e.key==='0')setZoom(1);
+});
+
+/* ---------- thumbnails ---------- */
+let io;
+function buildThumbs(){
+  const box=$('#thumbs');box.innerHTML='';box.style.setProperty('--r',ratio);
+  io&&io.disconnect();const g=gen;
+  io=new IntersectionObserver(es=>es.forEach(async en=>{
+    if(!en.isIntersecting)return;io.unobserve(en.target);
+    try{const c=await renderPage(+en.target.dataset.n,110);if(g===gen)en.target.style.backgroundImage=`url(${c.toDataURL('image/jpeg',.6)})`}catch(e){}
+  }),{root:box,rootMargin:'200px'});
+  for(let n=1;n<=total;n++){const d=document.createElement('div');d.dataset.n=n;d.onclick=()=>goTo(n);box.appendChild(d);io.observe(d)}
+}
+
+/* ---------- sources ---------- */
+function openBook(n,r,fn){
+  gen++;cache={};total=n;ratio=r;renderPage=fn;cur=0;side='R';z=1;tx=ty=0;qual=1;applyZ();size();buildThumbs();show();
+}
+async function loadPdf(file){
+  if(!file)return;
+  if(file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name))return;
+  try{
+    const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const v=(await doc.getPage(1)).getViewport({scale:1});
+    openBook(doc.numPages,v.width/v.height,async(n,h)=>{
+      const pg=await doc.getPage(n),b=pg.getViewport({scale:1}),vp=pg.getViewport({scale:h/b.height});
+      const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;
+      const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+      await pg.render({canvasContext:x,viewport:vp}).promise;return c;
+    });
+  }catch(err){console.error(err)}
+}
+$('#file').onchange=e=>loadPdf(e.target.files[0]);
+addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('dragging')});
+addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dragging')});
+addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('dragging');loadPdf(e.dataTransfer.files[0])});
+
+function demo(){
+  const T=[['Music of','the pages'],['Every page','','turns','','with the','weight of light'],['','Drag the corner','','and the paper','curls','','under your hand'],['Pinch or scroll','to zoom in'],['','Double-click','to zoom fast'],['Open','your own PDF','','to read it','here'],['','','The end']];
+  openBook(T.length+1,.75,async(n,h)=>{
+    const c=document.createElement('canvas');c.height=h;c.width=Math.round(h*.75);const x=c.getContext('2d'),w=c.width;
+    x.fillStyle='#0b0b0c';x.fillRect(0,0,w,h);
+    let s=n*9301+49297;const rnd=()=>(s=(s*9301+49297)%233280)/233280;
+    for(let i=0;i<160;i++){x.fillStyle=`rgba(255,255,255,${.15+rnd()*.5})`;const r=rnd()<.03?1.6:.7;x.fillRect(rnd()*w,rnd()*h,r,r)}
+    const lines=T[(n-1)%T.length];x.fillStyle='#fff';x.font=`${h*.034}px "Helvetica Neue",Arial,sans-serif`;
+    if(n===1){x.textAlign='center';x.font=`${h*.05}px "Helvetica Neue",Arial,sans-serif`;lines.forEach((l,i)=>x.fillText(l.toUpperCase(),w/2,h*.45+i*h*.07))}
+    else{
+      lines.forEach((l,i)=>{x.textAlign=(n+i)%3?'left':'right';x.fillText(l.toUpperCase(),(n+i)%3?w*.1+((i*7)%3)*w*.08:w*.9,h*.12+i*h*.056)});
+      x.textAlign='center';x.font=`${h*.022}px "Helvetica Neue",Arial,sans-serif`;x.fillStyle='#888';x.fillText(n,w/2,h*.95);
+    }
+    return c;
+  });
+}
+$('#demo').onclick=demo;
+size();demo();
+</script>
+</body>
+</html>
