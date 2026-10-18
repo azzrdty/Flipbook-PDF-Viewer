@@ -1,1 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flipbook PDF Viewer</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#000;--bg2:#0a0a0f;--fg:#f0f0f5;--mut:#a9a9b8;--line:rgba(255,255,255,.3);--edge:#3c3c44;--edge2:#2b2b32}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+html{background:var(--bg)}
+#glow{position:fixed;inset:0;width:100%;height:100%;z-index:-1;display:block;pointer-events:none}
+body{background:transparent;color:var(--fg);font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none}
+body{--dock:92px}body.th{--dock:200px}
+#stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden;touch-action:none;padding-bottom:var(--dock);transition:padding .3s ease}
+#zoomer{transform-origin:50% 50%}
+#book{position:relative;width:calc(var(--pw)*2);height:var(--ph);perspective:2600px;perspective-origin:50% 45%;cursor:grab;transform:translateX(var(--sx,0px));transition:transform .35s ease,opacity .16s}
+#book.drag{cursor:grabbing}
+#book::before{content:"";position:absolute;left:calc(3% + var(--shl,0)*1%);right:calc(3% + var(--shr,0)*1%);bottom:-18px;height:26px;background:rgba(0,0,0,.38);filter:blur(16px);border-radius:50%}
+.page,.f,.b{background:#fff center/100% 100% no-repeat}
+.page{position:absolute;top:0;width:var(--pw);height:var(--ph);z-index:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,.28))}
+#L{left:0;border-radius:2px 0 0 2px;box-shadow:-1px 1px 0 var(--edge),-2px 2px 0 var(--edge2),-3px 3px 0 var(--edge)}
+#R{right:0;border-radius:0 2px 2px 0;box-shadow:1px 1px 0 var(--edge),2px 2px 0 var(--edge2),3px 3px 0 var(--edge)}
+.blank{background:transparent!important;box-shadow:none!important}
+.blank::before,.blank::after{display:none!important}
+.page::before,.f::before,.b::before{content:"";position:absolute;inset:0;background:#000;opacity:var(--s,0);pointer-events:none;z-index:1}
+.page::after,.f::after,.b::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2}
+#L::after{background:linear-gradient(to left,rgba(0,0,0,.4),rgba(0,0,0,.1) 5%,transparent 16%)}
+#R::after{background:linear-gradient(to right,rgba(0,0,0,.4),rgba(0,0,0,.1) 5%,transparent 16%)}
+.leaf{position:absolute;z-index:10;top:0;left:50%;width:var(--pw);height:var(--ph);display:none;pointer-events:none}
+#leafP{transform:scaleX(-1);transform-origin:0 0}
+.leaf>div{position:absolute;inset:0}
+.leaf .im,.leaf .sh{position:absolute;inset:0;background:#fff center/100% 100% no-repeat}
+.leaf .sh{background:none}
+.leaf .im.blank{background:transparent}
+.leaf .flap{position:absolute;inset:0;transform-origin:0 0}
+.leaf>.fw{display:none}
+#hsh{position:absolute;top:0;height:100%;z-index:9;display:none;pointer-events:none;border-radius:2px}
+.leaf .rem::after{content:"";position:absolute;inset:0;background:linear-gradient(to right,rgba(0,0,0,.4),rgba(0,0,0,.1) 5%,transparent 16%)}
+/* hard covers: rigid board that swings on the spine, no bending */
+.hl{position:absolute;z-index:10;top:0;width:var(--pw);height:var(--ph);transform-style:preserve-3d;display:none;pointer-events:none}
+#hardN{left:50%;transform-origin:left center}#hardP{left:0;transform-origin:right center}
+.hf,.hb{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:#fff center/100% 100% no-repeat;border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 0 3px rgba(0,0,0,.08)}
+.hb{transform:rotateY(180deg)}
+.hf::before,.hb::before{content:"";position:absolute;inset:0;border-radius:2px;background:#000;opacity:var(--s,0);pointer-events:none}
+#hardN .hf::after,#hardP .hb::after{content:"";position:absolute;inset:0;background:linear-gradient(to right,rgba(0,0,0,.35),transparent 9%)}
+#hardN .hb::after,#hardP .hf::after{content:"";position:absolute;inset:0;background:linear-gradient(to left,rgba(0,0,0,.35),transparent 9%)}
+#R.cover{border-radius:2px 3px 3px 2px;box-shadow:0 0 0 1px rgba(0,0,0,.3),3px 3px 0 var(--edge2),6px 6px 8px rgba(0,0,0,.22)}
+#L.cover{border-radius:3px 2px 2px 3px;box-shadow:0 0 0 1px rgba(0,0,0,.3),-3px 3px 0 var(--edge2),-6px 6px 8px rgba(0,0,0,.22)}
+#thumbs{display:none;position:fixed;left:12px;right:12px;bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:40;gap:8px;overflow-x:auto;padding:10px 14px;justify-content:flex-start;border-radius:18px;background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.015) 50%,rgba(255,255,255,.04));-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);border:1px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.3);box-shadow:0 14px 40px rgba(0,0,0,.35)}
+#thumbs.on{display:flex}
+#thumbs div{flex:none;height:84px;aspect-ratio:var(--r,.75);background:#fff center/cover;border:2px solid transparent;border-radius:2px;cursor:pointer;opacity:.75}
+#thumbs div.cur{border-color:var(--fg);opacity:1}
+/* floating island for the utility controls */
+#bar{position:relative;isolation:isolate;overflow:hidden;align-self:center;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;margin:0 12px calc(16px + env(safe-area-inset-bottom,0px));padding:7px 10px;max-width:calc(100% - 24px);border-radius:999px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.88);text-shadow:0 1px 2px rgba(0,0,0,.35);background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.015) 45%,rgba(255,255,255,.04));-webkit-backdrop-filter:blur(14px) saturate(1.6) brightness(1.05);backdrop-filter:blur(14px) saturate(1.6) brightness(1.05);border:1px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.34);border-left-color:rgba(255,255,255,.24);box-shadow:0 18px 50px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 28px rgba(255,255,255,.03)}
+#bar button,#bar label{background:none;border:0;border-radius:999px;color:var(--fg);font:inherit;letter-spacing:inherit;text-transform:inherit;padding:9px 13px;cursor:pointer;transition:background .15s,transform .15s}
+#bar button:hover,#bar label:hover{background:rgba(255,255,255,.14)}
+#bar button:active,#bar label:active{transform:scale(.94)}
+#bar button:disabled{opacity:.3;cursor:default;background:none;transform:none}
+#bar .sep{width:1px;height:20px;margin:0 6px;background:rgba(255,255,255,.22)}
+#bar .nums{display:flex;align-items:center;gap:6px;padding:0 4px}
+#num{width:46px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);text-shadow:inherit;border-radius:999px;color:var(--fg);font:inherit;text-align:center;padding:6px 0;outline:none}
+#num:focus{border-color:rgba(255,255,255,.4)}
+/* floating dock: overlays the viewer on the top layer instead of being a separate strip */
+#bar{position:fixed;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom,0px));margin:0 auto;width:fit-content;z-index:50}
+@media (max-width:560px){#bar{border-radius:26px;padding:6px 8px}#bar button,#bar label{padding:8px 10px}#bar .sep{display:none}}
+#drop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .2s;font-size:20px;letter-spacing:.2em;text-transform:uppercase;background:color-mix(in srgb,var(--bg) 80%,transparent);z-index:9}
+body.dragging #drop{opacity:1}
+</style>
+</head>
+<body>
+<canvas id="glow"></canvas>
+<div id="stage"><div id="zoomer">
+  <div id="book">
+    <div class="page" id="L"></div>
+    <div class="page" id="R"></div>
+    <div class="leaf" id="leafN"></div>
+    <div class="leaf" id="leafP"></div>
+    <div id="hsh"></div>
+    <div class="hl" id="hardN"><div class="hf"></div><div class="hb"></div></div>
+    <div class="hl" id="hardP"><div class="hf"></div><div class="hb"></div></div>
+  </div>
+</div></div>
+<div id="thumbs"></div>
+<div id="bar" role="toolbar" aria-label="Viewer controls">
+  <label>Open PDF<input id="file" type="file" accept="application/pdf" hidden></label>
+  <i class="sep"></i>
+  <button id="prev" aria-label="Previous page">←</button>
+  <span class="nums"><input id="num" type="number" min="1" value="1" aria-label="Page number"><span>/ <span id="tot">0</span></span></span>
+  <button id="next" aria-label="Next page">→</button>
+  <i class="sep"></i>
+  <button id="zo" aria-label="Zoom out">−</button><button id="zi" aria-label="Zoom in">+</button>
+  <i class="sep"></i>
+  <button id="rl" aria-label="Rotate left">↺</button><button id="rr" aria-label="Rotate right">↻</button>
+  <i class="sep"></i>
+  <button id="pg">Pages</button><button id="fs">Fullscreen</button><button id="demo">Demo</button>
+</div>
+<div id="drop">Drop PDF</div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const stage=$('#stage'),Z=$('#zoomer'),book=$('#book'),L=$('#L'),R=$('#R'),leafN=$('#leafN'),leafP=$('#leafP'),hsh=$('#hsh'),hardN=$('#hardN'),hardP=$('#hardP');
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+let total=0,cur=0,side='R',single=false,busy=false,ratio=.75,renderPage=null,cache={},gen=0,drag=null;
+let rot=0,z=1,tx=0,ty=0,qual=1,qt,pinch=null,pan=null,lastTap=0,tapT;
+const ptrs=new Map();
+try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}catch(e){}
+
+/* ---------- fold leaves (2D diagonal fold, my own implementation of a corner-peel) ---------- */
+function build(leaf,dir){
+  leaf.innerHTML='<div class="rem"><div class="im"></div></div><div class="cast"></div><div class="fw"><div class="flap"><div class="im"></div><div class="sh"></div></div></div>';
+  leaf.querySelector('.rem .im').style.transform=dir<0?'scaleX(-1)':'';
+  leaf.querySelector('.flap .im').style.transform=dir>0?'scaleX(-1)':'';
+}
+build(leafN,1);build(leafP,-1);
+
+/* ---------- layout ---------- */
+const pw=()=>book.clientWidth/2;
+function size(){
+  const r90=Math.abs(rot%180)===90;
+  const pad=parseFloat(getComputedStyle(stage).paddingBottom)||0,SW=stage.clientWidth,SH=stage.clientHeight-pad;
+  const sw=r90?SH:SW,sh=r90?SW:SH;                       // when turned 90°, the book's long side runs along the screen's height
+  single=sw<720;
+  const h=Math.max(140,single?Math.min(sh-50,(sw-24)/ratio):Math.min(sh-50,(sw-40)/2/ratio));
+  book.style.setProperty('--ph',h+'px');book.style.setProperty('--pw',h*ratio+'px');
+  slide();clampPan();applyZ();
+}
+const sxFor=(c,sd)=>single?(sd==='R'?-1:1)*pw()/2:c===0?-pw()/2:(total%2===0&&c===total)?pw()/2:0;   // keep the visible page(s) centred
+const shF=(c,sd)=>single?(sd==='R'?[50,0]:[0,50]):c===0?[50,0]:(total%2===0&&c===total)?[0,50]:[0,0];  // drop shadow only under visible pages
+function slide(){book.style.setProperty('--sx',sxFor(cur,side)+'px');const[a,b]=shF(cur,side);book.style.setProperty('--shl',a);book.style.setProperty('--shr',b)}
+function setShift(T,p){book.style.setProperty('--sx',T.s0+T.ds*p+'px');book.style.setProperty('--shl',T.a0+(T.a1-T.a0)*p);book.style.setProperty('--shr',T.b0+(T.b1-T.b0)*p)}
+addEventListener('resize',()=>{size();cache={};gen++;if(total)show()});
+
+/* ---------- page images ---------- */
+function img(n){
+  if(n<1||n>total)return Promise.resolve(null);
+  if(cache[n])return cache[n];
+  const g=gen,sc=Math.min((devicePixelRatio||1)*qual,3.5);
+  const p=renderPage(n,book.clientHeight*sc).then(c=>new Promise(r=>c.toBlob(b=>r(URL.createObjectURL(b)),'image/jpeg',.9)));
+  cache[n]=p;p.catch(()=>{if(g===gen)delete cache[n]});return p;
+}
+function paint(el,u){el.classList.toggle('blank',!u);el.style.backgroundImage=u?`url(${u})`:'none'}
+async function setFace(el,n){const g=gen,u=await img(n);if(g===gen)paint(el,u)}
+async function setLeaf(leaf,fN,bN){
+  const g=gen,[a,b]=await Promise.all([img(fN),img(bN)]);if(g!==gen)return;
+  paint(leaf.querySelector('.rem .im'),a);paint(leaf.querySelector('.flap .im'),b);
+}
+const maxCur=()=>total%2?total-1:total;
+const curPage=()=>single?(side==='L'?cur:cur+1):cur;
+
+async function show(){
+  L.style.setProperty('--s',0);R.style.setProperty('--s',0);
+  slide();
+  await Promise.all([setFace(L,cur),setFace(R,cur+1)]);
+  L.classList.toggle('cover',cur===total&&total>1);R.classList.toggle('cover',cur+1===1||cur+1===total);
+  const n=clamp(curPage()||1,1,total);
+  $('#num').value=n;$('#num').max=total;$('#tot').textContent=total;
+  $('#prev').disabled=single?(cur<=0&&side==='R'||cur===0):cur<=0;
+  $('#next').disabled=single?(cur>=maxCur()&&(side==='R'||cur+1>total)):cur>=maxCur();
+  document.querySelectorAll('#thumbs div').forEach(d=>d.classList.toggle('cur',+d.dataset.n===n||(!single&&+d.dataset.n===(n%2?n+1:n-1)&&n>1&&false)));
+  const t=document.querySelector(`#thumbs div[data-n="${n}"]`);if(t&&$('#thumbs').classList.contains('on'))t.scrollIntoView({inline:'center',block:'nearest'});
+  for(let i=cur-3;i<=cur+6;i++)img(i);
+}
+
+/* ---------- turning ---------- */
+const poly=p=>p.length>2?'polygon('+p.map(q=>q[0].toFixed(1)+'px '+q[1].toFixed(1)+'px').join(',')+')':'polygon(0 0,0 0,0 0)';
+function clipHalf(P,nx,ny,c,le){            // keep the part of polygon P where n·p <= c (le) or >= c
+  const f=p=>(le?1:-1)*(nx*p[0]+ny*p[1]-c),o=[];
+  for(let i=0;i<P.length;i++){
+    const a=P[i],b=P[(i+1)%P.length],fa=f(a),fb=f(b);
+    if(fa<=0)o.push(a);
+    if((fa<0&&fb>0)||(fa>0&&fb<0)){const t=fa/(fa-fb);o.push([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t])}
+  }
+  return o;
+}
+// Fold the sheet so its grabbed corner sits at (px,py). Local coords: origin at the spine/top, x runs outward.
+// The fold line is the perpendicular bisector of corner -> target; the folded flap is the mirror image.
+function sstep(a,b,x){const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)}
+const shEnv=p=>sstep(0,.34,p)*sstep(1,.66,p);   // 0 -> 1 -> 0 with zero slope at both ends, so shadows glide in and out
+function hardTo(T,px){                    // rigid board: edge follows the cursor, sheet never stretches
+  const W=pw(),th=Math.acos(clamp(px/W,-1,1)),p=th/Math.PI;
+  T.x=px=W*Math.cos(th);T.y=T.cy;setShift(T,p);
+  T.leaf.style.transform=`rotateY(${-T.dir*th*180/Math.PI}deg)`;
+  T.leaf.style.setProperty('--s',Math.sin(th)*.22);
+  const sn=Math.sin(th),ex=px*2600/(2600-W*sn),a=.2+.8*shEnv(p);       // projected edge of the board
+  hsh.style.left=W+Math.min(0,T.dir*ex)+'px';hsh.style.width=Math.abs(ex)+'px';
+  hsh.style.boxShadow=`0 ${4+8*a}px ${18+34*a}px ${2+6*a}px rgba(0,0,0,${.55*a})`;
+  (T.dir>0?R:L).style.setProperty('--s',(1-p)*.32*sstep(0,.3,p));
+}
+function foldTo(T,px,py){
+  if(T.hard)return hardTo(T,px);
+  const W=pw(),H=book.clientHeight,cy=T.cy,leaf=T.leaf,rem=leaf.children[0],cast=leaf.children[1],fw=leaf.children[2],flap=fw.firstChild;
+  let x=px,y=py;                                        // paper can't stretch: stay within reach of the spine corners
+  for(const[cx,cc,r]of[[0,cy,W],[0,H-cy,Math.hypot(W,H)],[0,cy,W]]){const dx=x-cx,dy=y-cc,d=Math.hypot(dx,dy);if(d>r){x=cx+dx*r/d;y=cc+dy*r/d}}
+  const pr=clamp((W-x)/(2*W),0,1),env=shEnv(pr);   // 0 at both ends of the turn, 1 mid-turn
+  T.x=x;T.y=y;setShift(T,pr);
+  (T.dir>0?R:L).style.setProperty('--s',(1-pr)*.18*sstep(0,.3,pr));
+  leaf.style.filter=`drop-shadow(0 ${2+7*env}px ${4+13*env}px rgba(0,0,0,${.28+.27*env}))`;   // shadow is part of the page itself, so it travels with it       // page being uncovered darkens, then fades out
+  const ex=W-x,ey=cy-y,d=Math.hypot(ex,ey);
+  if(d<.8){rem.style.clipPath='none';cast.style.display=fw.style.display='none';return}
+  const nx=ex/d,ny=ey/d,c=nx*(W+x)/2+ny*(cy+y)/2,rect=[[0,0],[W,0],[W,H],[0,H]];
+  const far=poly(clipHalf(rect,nx,ny,c,false));
+  rem.style.clipPath=poly(clipHalf(rect,nx,ny,c,true));
+  cast.style.display=fw.style.display='block';cast.style.clipPath=far;flap.style.clipPath=far;
+  flap.style.transform=`matrix(${1-2*nx*nx},${-2*nx*ny},${-2*nx*ny},${1-2*ny*ny},${2*c*nx},${2*c*ny})`;
+  const amt=clamp(d/W,0,1)*env,Lg=Math.abs(W*nx)+Math.abs(H*ny),t=c-nx*W/2-ny*H/2+Lg/2,ang=Math.atan2(nx,-ny)*180/Math.PI;
+  cast.style.background=`linear-gradient(${ang}deg,transparent ${t-1}px,rgba(0,0,0,${.38*amt}) ${t}px,transparent ${t+80}px)`;
+  flap.children[1].style.background=`linear-gradient(${ang}deg,transparent ${t-1}px,rgba(0,0,0,${.3*amt}) ${t}px,rgba(255,255,255,${.1*amt}) ${t+Lg*.35}px,transparent ${t+Lg*.7}px)`;
+}
+const isHard=n=>n===1||n===total;
+async function prep(dir,cy){
+  busy=true;
+  const f=dir>0?cur+1:cur,b=dir>0?cur+2:cur-1,hard=isHard(f)||isHard(b);
+  const leaf=hard?(dir>0?hardN:hardP):(dir>0?leafN:leafP);
+  const under=dir>0?setFace(R,cur+3):setFace(L,cur-2);
+  if(hard){const g=gen,[u,v]=await Promise.all([img(f),img(b),under]);if(g===gen){paint(leaf.querySelector('.hf'),u);paint(leaf.querySelector('.hb'),v)}}
+  else await Promise.all([setLeaf(leaf,f,b),under]);
+  const c1=cur+2*dir,[a0,b0]=shF(cur,side),[a1,b1]=shF(c1,'R'),s0=sxFor(cur,side);
+  book.style.transition='opacity .16s';      // shift is driven by the turn itself
+  if(hard)hsh.style.display='block';
+  const T={leaf,dir,cy,hard,x:pw(),y:cy,s0,ds:sxFor(c1,'R')-s0,a0,a1,b0,b1};leaf.style.display='block';foldTo(T,T.x,T.y);return T;
+}
+function finish(T,complete,lift){
+  const W=pw(),H=book.clientHeight,x0=T.x,y0=T.y,x1=complete?-W:W,y1=T.cy;
+  const dur=(260+520*Math.abs(x1-x0)/(2*W)+(lift&&!T.hard?120:0))*(T.hard?1.35:1),t0=performance.now(),ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+  (function f(now){
+    const t=clamp((now-t0)/dur,0,1),e=ease(t),bul=lift?(T.cy?-1:1)*H*.32*Math.sin(Math.PI*t):0;
+    foldTo(T,x0+(x1-x0)*e,y0+(y1-y0)*e+bul);
+    if(t<1)return requestAnimationFrame(f);
+    (async()=>{if(complete){cur+=T.dir*2;side=T.dir>0?'L':'R'}await show();T.leaf.style.display='none';T.leaf.style.transform='';hsh.style.display='none';book.style.transition='';busy=false})();
+  })(t0);
+}
+async function flip(dir){
+  if(busy||!total||(dir>0&&cur>=maxCur())||(dir<0&&cur<=0))return;
+  finish(await prep(dir,0),true,true);      // click / key / button turns lift the top corner
+}
+async function nav(dir){
+  if(busy||!total)return;
+  if(!single)return flip(dir);
+  if(dir>0){
+    if(side==='L'&&cur+1<=total){side='R';return show()}
+    if(cur<maxCur())return fade(()=>{cur+=2;side=cur+0>=0?'L':'L'});
+  }else{
+    if(side==='R'&&cur>0){side='L';return show()}
+    if(cur>0)return fade(()=>{cur-=2;side='R'});
+  }
+}
+async function fade(fn){
+  busy=true;book.style.opacity=0;await new Promise(r=>setTimeout(r,170));
+  fn();book.style.transition='opacity .16s';await show();book.style.opacity=1;busy=false;
+}
+
+/* ---------- zoom ---------- */
+function applyZ(){Z.style.transform=`translate(${tx}px,${ty}px) rotate(${rot}deg) scale(${z})`}
+function clampPan(){
+  if(z<=1){tx=ty=0;return}
+  const vw=single?book.clientWidth/2:book.clientWidth,vh=book.clientHeight,q=Math.abs(rot%180)===90,bw=q?vh:vw,bh=q?vw:vh,mx=Math.max(0,(bw*z-stage.clientWidth)/2)+60,my=Math.max(0,(bh*z-stage.clientHeight)/2)+60;
+  tx=clamp(tx,-mx,mx);ty=clamp(ty,-my,my);
+}
+function setZoom(nz,cx,cy){
+  nz=clamp(nz,1,4);const r=stage.getBoundingClientRect();
+  const px=(cx==null?0:cx-(r.left+r.width/2)),py=(cy==null?0:cy-(r.top+r.height/2));
+  tx=px-(px-tx)*nz/z;ty=py-(py-ty)*nz/z;z=nz;clampPan();applyZ();
+  clearTimeout(qt);qt=setTimeout(()=>{const q=z>2.2?3:z>1.3?2:1;if(q!==qual&&!busy){qual=q;gen++;cache={};show()}},350);
+}
+stage.addEventListener('wheel',e=>{e.preventDefault();setZoom(z*Math.exp(-e.deltaY*.002),e.clientX,e.clientY)},{passive:false});
+function rotateBook(d){
+  if(busy||drag||!total)return;
+  const oldPh=book.clientHeight,oldRot=rot;
+  rot+=d;size();cache={};gen++;                          // refit and re-render pages for the new orientation
+  const k=oldPh/book.clientHeight;                       // start from the old on-screen size so the turn looks continuous
+  Z.style.transition='none';Z.style.transform=`translate(${tx}px,${ty}px) rotate(${oldRot}deg) scale(${z*k})`;
+  void Z.offsetWidth;
+  Z.style.transition='transform .55s cubic-bezier(.3,.7,.2,1)';applyZ();
+  show();setTimeout(()=>{Z.style.transition=''},600);
+}
+$('#rl').onclick=()=>rotateBook(-90);$('#rr').onclick=()=>rotateBook(90);
+$('#zi').onclick=()=>setZoom(z*1.4);$('#zo').onclick=()=>setZoom(z/1.4);
+
+/* ---------- pointer handling ---------- */
+function tap(x,y,fn){
+  const now=performance.now();
+  if(now-lastTap<300){clearTimeout(tapT);lastTap=0;setZoom(z>1?1:2.5,x,y)}
+  else{lastTap=now;tapT=setTimeout(fn,z>1?1e9:220)}
+}
+function wf(e){                // pointer in the zoomer's own frame: rotation and zoom undone, origin at its centre
+  const r=Z.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),a=-rot*Math.PI/180,c=Math.cos(a),s=Math.sin(a);
+  return[(dx*c-dy*s)/z,(dx*s+dy*c)/z];
+}
+function loc(e,dir){            // pointer position in the leaf's local coordinates (u outward from the spine, v down from the top)
+  const[x,y]=wf(e),sp=sxFor(cur,side);
+  return[dir>0?x-sp:sp-x,y+book.clientHeight/2];
+}
+function cancelDrag(){
+  const d=drag;drag=null;book.classList.remove('drag');
+  if(d&&d.prom)d.prom.then(T=>finish(T,false,false));
+}
+book.addEventListener('pointerdown',e=>{
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===2){cancelDrag();pan=null;const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),z0:z};return}
+  book.setPointerCapture(e.pointerId);
+  if(z>1){pan={sx:e.clientX,sy:e.clientY,tx,ty,moved:false};return}
+  if(busy||!total)return;
+  const w0=wf(e),dir=w0[0]>sxFor(cur,side)?1:-1;
+  if(single){drag={single:1,sx:w0[0],dir};return}
+  if((dir>0&&cur>=maxCur())||(dir<0&&cur<=0))return;
+  const[u0,v0]=loc(e,dir);
+  drag={dir,sx:e.clientX,sy:e.clientY,x:w0[0],vx:0,t:performance.now(),prom:null,T:null,sp0:sxFor(cur,side),u0,v0,cy:v0<book.clientHeight/2?0:book.clientHeight,e};
+});
+function dragTo(d,e){
+  const T=d.T,W=pw(),dir=d.dir,w=wf(e),v=w[1]+book.clientHeight/2;
+  let u=dir>0?w[0]-d.sp0:d.sp0-w[0];
+  for(let i=0;i<4;i++){
+    const edge=W+(u-d.u0),p=T.hard?Math.acos(clamp(edge/W,-1,1))/Math.PI:clamp((W-edge)/(2*W),0,1),sh=T.ds*p;
+    u=dir>0?w[0]-d.sp0-sh:d.sp0-w[0]+sh;
+  }
+  foldTo(T,W+(u-d.u0),d.cy+(v-d.v0));
+}
+book.addEventListener('pointermove',e=>{
+  if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&ptrs.size>=2){const[a,b]=[...ptrs.values()];setZoom(pinch.z0*Math.hypot(a.x-b.x,a.y-b.y)/pinch.d,(a.x+b.x)/2,(a.y+b.y)/2);return}
+  if(pan){const dx=e.clientX-pan.sx,dy=e.clientY-pan.sy;if(Math.abs(dx)+Math.abs(dy)>4)pan.moved=true;tx=pan.tx+dx;ty=pan.ty+dy;clampPan();applyZ();return}
+  const d=drag;if(!d||d.single)return;
+  const now=performance.now(),dt=Math.max(1,now-d.t);
+  const wx=wf(e)[0];d.vx=.7*d.vx+.3*((wx-d.x)/dt);d.x=wx;d.t=now;d.e=e;
+  if(!d.prom&&Math.hypot(e.clientX-d.sx,e.clientY-d.sy)>5){
+    book.classList.add('drag');
+    d.prom=prep(d.dir,d.cy).then(T=>{d.T=T;dragTo(d,d.e);return T});
+  }
+  if(d.T)dragTo(d,e);
+});
+async function release(e){
+  ptrs.delete(e.pointerId);
+  if(pinch){if(ptrs.size<2)pinch=null;return}
+  if(pan){const p=pan;pan=null;if(!p.moved)tap(e.clientX,e.clientY,()=>{});return}
+  const d=drag;if(!d)return;drag=null;book.classList.remove('drag');
+  if(d.single){const dx=wf(e)[0]-d.sx;if(Math.abs(dx)>40)nav(dx<0?1:-1);else tap(e.clientX,e.clientY,()=>nav(d.dir));return}
+  if(!d.prom){tap(e.clientX,e.clientY,()=>nav(d.dir));return}
+  const T=await d.prom;
+  const fl=Math.abs(d.vx)>.5&&Math.sign(d.vx)===-d.dir,bk=Math.abs(d.vx)>.5&&Math.sign(d.vx)===d.dir;
+  finish(T,fl||(!bk&&T.x<pw()/2),false);   // like turn.js: cross the middle of the page to complete the turn
+}
+book.addEventListener('pointerup',release);
+book.addEventListener('pointercancel',release);
+
+/* ---------- controls ---------- */
+function goTo(n){
+  if(!total||busy)return;
+  n=clamp(n|0,1,total);cur=Math.min(n%2?n-1:n,maxCur());side=n%2?'R':'L';show();
+}
+$('#next').onclick=()=>nav(1);$('#prev').onclick=()=>nav(-1);
+$('#num').onchange=e=>goTo(+e.target.value);
+$('#fs').onclick=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}catch(e){}};
+$('#pg').onclick=()=>{$('#thumbs').classList.toggle('on');document.body.classList.toggle('th');setTimeout(()=>{size();show()},320)};
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  if(['ArrowRight','PageDown',' '].includes(e.key))nav(1);
+  if(['ArrowLeft','PageUp'].includes(e.key))nav(-1);
+  if(e.key==='Home')goTo(1);if(e.key==='End')goTo(total);
+  if(e.key==='+'||e.key==='=')setZoom(z*1.4);if(e.key==='-')setZoom(z/1.4);if(e.key==='0')setZoom(1);
+});
+
+/* ---------- thumbnails ---------- */
+let io;
+function buildThumbs(){
+  const box=$('#thumbs');box.innerHTML='';box.style.setProperty('--r',ratio);
+  io&&io.disconnect();const g=gen;
+  io=new IntersectionObserver(es=>es.forEach(async en=>{
+    if(!en.isIntersecting)return;io.unobserve(en.target);
+    try{const c=await renderPage(+en.target.dataset.n,110);if(g===gen)en.target.style.backgroundImage=`url(${c.toDataURL('image/jpeg',.6)})`}catch(e){}
+  }),{root:box,rootMargin:'200px'});
+  for(let n=1;n<=total;n++){const d=document.createElement('div');d.dataset.n=n;d.onclick=()=>goTo(n);box.appendChild(d);io.observe(d)}
+}
+
+/* ---------- sources ---------- */
+function openBook(n,r,fn){
+  gen++;cache={};total=n;ratio=r;renderPage=fn;cur=0;side='R';z=1;tx=ty=0;qual=1;applyZ();size();buildThumbs();show();
+}
+async function loadPdf(file){
+  if(!file)return;
+  if(file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name))return;
+  try{
+    const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const v=(await doc.getPage(1)).getViewport({scale:1});
+    openBook(doc.numPages,v.width/v.height,async(n,h)=>{
+      const pg=await doc.getPage(n),b=pg.getViewport({scale:1}),vp=pg.getViewport({scale:h/b.height});
+      const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;
+      const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+      await pg.render({canvasContext:x,viewport:vp}).promise;return c;
+    });
+  }catch(err){console.error(err)}
+}
+$('#file').onchange=e=>loadPdf(e.target.files[0]);
+addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('dragging')});
+addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dragging')});
+addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('dragging');loadPdf(e.dataTransfer.files[0])});
+
+function demo(){
+  const T=[['Music of','the pages'],['Every page','','turns','','with the','weight of light'],['','Drag the corner','','and the paper','curls','','under your hand'],['Pinch or scroll','to zoom in'],['','Double-click','to zoom fast'],['Open','your own PDF','','to read it','here'],['','','The end']];
+  openBook(T.length+1,.75,async(n,h)=>{
+    const c=document.createElement('canvas');c.height=h;c.width=Math.round(h*.75);const x=c.getContext('2d'),w=c.width;
+    x.fillStyle='#0b0b0c';x.fillRect(0,0,w,h);
+    let s=n*9301+49297;const rnd=()=>(s=(s*9301+49297)%233280)/233280;
+    for(let i=0;i<160;i++){x.fillStyle=`rgba(255,255,255,${.15+rnd()*.5})`;const r=rnd()<.03?1.6:.7;x.fillRect(rnd()*w,rnd()*h,r,r)}
+    const lines=T[(n-1)%T.length];x.fillStyle='#fff';x.font=`${h*.034}px "Helvetica Neue",Arial,sans-serif`;
+    if(n===1){x.textAlign='center';x.font=`${h*.05}px "Helvetica Neue",Arial,sans-serif`;lines.forEach((l,i)=>x.fillText(l.toUpperCase(),w/2,h*.45+i*h*.07))}
+    else{
+      lines.forEach((l,i)=>{x.textAlign=(n+i)%3?'left':'right';x.fillText(l.toUpperCase(),(n+i)%3?w*.1+((i*7)%3)*w*.08:w*.9,h*.12+i*h*.056)});
+      x.textAlign='center';x.font=`${h*.022}px "Helvetica Neue",Arial,sans-serif`;x.fillStyle='#888';x.fillText(n,w/2,h*.95);
+    }
+    return c;
+  });
+}
+$('#demo').onclick=demo;
+size();demo();
+</script>
+
+<script>
+/* ---------- Halftone Bloom background (vanilla WebGL2 port of the component) ---------- */
+(function(){
+const CFG={background:'#000000',color1:'#1B4F9E',color2:'#1B4F9E',speed:20,size:200,angle:180,dotSize:5,hover:200,reach:800};
+const cv=document.getElementById('glow');
+const gl=cv.getContext('webgl2',{antialias:false,alpha:false,depth:false,stencil:false});
+if(!gl)return;                                   // falls back to the plain page colour
+const cl=(v,a,b)=>v<a?a:v>b?b:v,hex=s=>{s=s.replace('#','');return[0,2,4].map(i=>parseInt(s.slice(i,i+2),16)/255)};
+const LAYERS=matchMedia('(max-width:720px)').matches?48:86,GAIN=0.48,TURN=0.32,SWELL=1.1,REST=0.42,CAP=0.55,MAX_DPR=1.5;
+const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const VERT=`#version 300 es
+const vec2 P[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+void main() { gl_Position = vec4(P[gl_VertexID], 0.0, 1.0); }`;
+const FIELD=`#version 300 es
+precision highp float;
+uniform vec2 uRes;uniform float uTime;uniform vec3 uC1;uniform vec3 uC2;uniform float uSize;uniform float uAngle;
+out vec4 o;
+const float LAYERS = ${LAYERS.toFixed(1)};
+const float GAIN = ${GAIN.toFixed(3)};
+const vec2 CENTRE = vec2(-0.25, 0.56);
+const float TILT = 1.4;const float ZOOM = 1.05;const float THETA = 2.13;const float SHEAR = 0.965;const float SHRINK = 0.957;
+const vec2 WARP_FREQ = vec2(0.45, 2.5);const vec2 WARP_AMP = vec2(0.13, 0.028);const vec2 ASPECT = vec2(2.2, 0.18);
+const float OFFSET = 0.37;const float GLOW = 0.0021;const float SOFT = 0.0019;const float FALLOFF = 0.37;
+const float PHASE = 23.0;const float CYCLE = 0.16;const float HUE_TRAVEL = 2.0;
+mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, s, -s, c); }
+void main() {
+  vec2 R = uRes;
+  vec2 pos = (gl_FragCoord.xy - 0.5 * R) / R.y;
+  pos = rot(uAngle) * pos / uSize;
+  float t = uTime * 0.49 + PHASE;
+  float breath = (-sin(uTime * 0.735) + sin(uTime * 0.49 + 1.0)) * 0.25 + 0.5;
+  vec2 u = rot(TILT) * ((pos - CENTRE) * (ZOOM - breath * 0.085));
+  mat2 fold = mat2(cos(THETA), sin(THETA), -SHEAR, cos(THETA));
+  vec3 col = vec3(0.0);
+  for (float i = 1.0; i <= LAYERS; i += 1.0) {
+    u.x -= sin(u.y * WARP_FREQ.x + t + i * 0.007) * WARP_AMP.x;
+    u.y -= sin(u.x * WARP_FREQ.y - t + i * 0.02) * WARP_AMP.y;
+    u = fold * u * SHRINK;
+    vec2 q = (u - vec2(OFFSET + breath * 0.1, 0.0)) * ASPECT;
+    float g = GLOW / (dot(q, q) + SOFT) * (0.25 + breath * 0.4);
+    float r = length(u);
+    float k = sin(i * CYCLE + t * 1.2 + r * HUE_TRAVEL) * 0.5 + 0.5;
+    col += g * mix(uC1, uC2, k) * (0.62 + 0.5 * k) * exp2(-r * FALLOFF);
+  }
+  vec3 x = max(col * GAIN, 0.0);
+  col = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+  col = pow(clamp(col, 0.0, 1.0), vec3(0.85, 0.92, 0.98));
+  col *= 1.0 - smoothstep(0.5, 1.6, length(pos)) * 0.07;
+  o = vec4(col, 1.0);
+}`;
+const FINISH=`#version 300 es
+precision highp float;
+uniform sampler2D uField;uniform vec2 uRes;uniform float uTime;uniform vec3 uBg;uniform float uPaper;
+uniform vec2 uMouse;uniform float uOn;uniform float uReach;uniform float uCell;uniform float uPR;
+out vec4 o;
+const float PI = 3.14159265359;
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+const float TURN = ${TURN.toFixed(4)};
+const float SWELL = ${SWELL.toFixed(4)};
+const float REST = ${REST.toFixed(4)};
+const float CAP = ${CAP.toFixed(4)};
+float ign(vec2 p, float f) { p += 5.588238 * mod(f, 64.0); return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y)); }
+vec3 scene(vec2 uv) { return max(texture(uField, clamp(uv, 0.0, 1.0)).rgb, 0.0); }
+void main() {
+  vec2 frag = gl_FragCoord.xy;
+  vec2 uv = frag / uRes;
+  mat2 turn = mat2(cos(TURN), -sin(TURN), sin(TURN), cos(TURN));
+  vec2 rp = turn * frag;
+  vec2 c = (floor(rp / uCell) + 0.5) * uCell;
+  vec2 src = transpose(turn) * c;
+  vec3 soft = scene(uv);
+  vec3 ink = scene(src / uRes);
+  float lvl = clamp(dot(ink, LUMA), 0.0, 1.0);
+  float radius = uCell * sqrt(pow(lvl, 0.9) / PI);
+  float presence = smoothstep(0.03, 0.16, lvl) * REST;
+  if (uOn > 0.0) {
+    vec2 d = (src - uMouse) / uReach;
+    float w = uOn * exp(-dot(d, d));
+    if (w > 1e-4) {
+      radius *= 1.0 + SWELL * w;
+      presence = mix(presence, 1.0, min(w, 1.0));
+    }
+  }
+  radius = min(radius, uCell * CAP);
+  float aa = 0.7 * uPR;
+  float dm = 1.0 - smoothstep(radius - aa, radius + aa, length(rp - c));
+  vec3 dots = ink * min(0.8 / max(lvl, 1e-3), 2.2) * dm;
+  vec3 L = mix(soft, dots, presence);
+  vec3 dark = uBg + L * (1.0 - uBg);
+  float strength = clamp(max(L.r, max(L.g, L.b)), 0.0, 1.0);
+  vec3 paper = uBg * (1.0 - strength) + L * 0.96;
+  vec3 col = mix(dark, paper, uPaper);
+  col += (ign(frag, floor(uTime * 24.0)) - 0.5) / 255.0;
+  o = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+function link(frag){
+  const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);if(!gl.getShaderParameter(x,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(x));return null}return x};
+  const vs=sh(gl.VERTEX_SHADER,VERT),fs=sh(gl.FRAGMENT_SHADER,frag);if(!vs||!fs)return null;
+  const p=gl.createProgram();gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(p));return null}return p;
+}
+const field=link(FIELD),finish=link(FINISH);if(!field||!finish)return;
+const loc=(p,names)=>Object.fromEntries(names.map(n=>[n,gl.getUniformLocation(p,n)]));
+const uf=loc(field,['uRes','uTime','uC1','uC2','uSize','uAngle']);
+const un=loc(finish,['uField','uRes','uTime','uBg','uPaper','uMouse','uOn','uReach','uCell','uPR']);
+gl.bindVertexArray(gl.createVertexArray());
+
+// half-resolution float render target for the field pass
+const fbo=gl.createFramebuffer();let tex=null,tw=0,th=0,half=!!gl.getExtension('EXT_color_buffer_float');
+function resizeTarget(w,h){
+  if(w===tw&&h===th&&tex)return;
+  for(let a=0;a<2;a++){
+    if(tex)gl.deleteTexture(tex);tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+    [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]].forEach(([k,v])=>gl.texParameteri(gl.TEXTURE_2D,k,v));
+    gl.texImage2D(gl.TEXTURE_2D,0,half?gl.RGBA16F:gl.RGBA8,w,h,0,gl.RGBA,half?gl.HALF_FLOAT:gl.UNSIGNED_BYTE,null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
+    const ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE;gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    if(ok||!half)break;half=false;
+  }
+  tw=w;th=h;
+}
+
+// pointer in viewport coordinates (the canvas fills the viewport); still tracked while a page is being dragged
+const ptr={tx:0,ty:0,inside:false};
+addEventListener('pointermove',e=>{ptr.tx=e.clientX;ptr.ty=e.clientY;ptr.inside=true},{passive:true});
+addEventListener('pointerdown',e=>{ptr.tx=e.clientX;ptr.ty=e.clientY;ptr.inside=true},{passive:true});
+document.addEventListener('pointerout',e=>{if(!e.relatedTarget)ptr.inside=false});
+
+const c1=hex(CFG.color1),c2=hex(CFG.color2),bg=hex(CFG.background);
+const speed=reduce?.1:cl(CFG.speed,0,100)/50,size=cl(CFG.size,50,200)/100,angle=cl(CFG.angle,-180,180)*Math.PI/180;
+const dot=cl(CFG.dotSize,3,24),hover=reduce?0:cl(CFG.hover,0,200)/100,reach=cl(CFG.reach,10,800);
+const bgLum=.2126*bg[0]+.7152*bg[1]+.0722*bg[2];
+let mx=0,my=0,on=0,last=-1,clock=0;
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=last<0?0:cl((now-last)/1000,0,.05);last=now;clock=(clock+dt*speed)%3600;
+  const dpr=Math.min(devicePixelRatio||1,MAX_DPR),cw=cv.clientWidth||1200,ch=cv.clientHeight||800;
+  const bw=Math.max(1,Math.round(cw*dpr)),bh=Math.max(1,Math.round(ch*dpr));
+  if(cv.width!==bw||cv.height!==bh){cv.width=bw;cv.height=bh}
+  resizeTarget(Math.max(1,Math.round(bw/2)),Math.max(1,Math.round(bh/2)));
+  const present=ptr.inside?1:0;
+  if(present&&on<.02){mx=ptr.tx;my=ptr.ty}
+  on+=(present-on)*(1-Math.exp(-dt*5));
+  const k=1-Math.exp(-dt*16);mx+=(ptr.tx-mx)*k;my+=(ptr.ty-my)*k;
+  gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);gl.viewport(0,0,tw,th);gl.useProgram(field);
+  gl.uniform2f(uf.uRes,tw,th);gl.uniform1f(uf.uTime,clock);
+  gl.uniform3f(uf.uC1,...c1);gl.uniform3f(uf.uC2,...c2);gl.uniform1f(uf.uSize,size);gl.uniform1f(uf.uAngle,angle);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+  const pr=bw/cw;
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,bw,bh);gl.useProgram(finish);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);gl.uniform1i(un.uField,0);
+  gl.uniform2f(un.uRes,bw,bh);gl.uniform1f(un.uTime,clock);gl.uniform3f(un.uBg,...bg);gl.uniform1f(un.uPaper,cl((bgLum-.35)/.3,0,1));
+  gl.uniform2f(un.uMouse,mx*pr,(ch-my)*pr);gl.uniform1f(un.uOn,on*hover);gl.uniform1f(un.uReach,reach*pr);
+  gl.uniform1f(un.uCell,dot*pr);gl.uniform1f(un.uPR,pr);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
