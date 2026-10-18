@@ -414,7 +414,21 @@ function demo(){
   });
 }
 $('#demo').onclick=demo;
-size();demo();
+size();
+const defaultPdfUrl = 'https://raw.githubusercontent.com/azzrdty/Flipbook-PDF-Viewer/blob/b708ff2fea3ddd1e9df84c09a0bc150a4c473ede/Portfolio%20Sertifikasi%20-%20Web%20Viewer.pdf'; // <- put your PDF at this path in the repo (or use a full URL)
+fetch(defaultPdfUrl)
+  .then(res => {
+    if (!res.ok) throw new Error('Fetch failed: ' + res.status);
+    return res.arrayBuffer();
+  })
+  .then(ab => {
+    // create a File-like object so loadPdf() accepts it
+    loadPdf(new File([ab], 'https://raw.githubusercontent.com/azzrdty/Flipbook-PDF-Viewer/blob/b708ff2fea3ddd1e9df84c09a0bc150a4c473ede/Portfolio%20Sertifikasi%20-%20Web%20Viewer.pdf', { type: 'application/pdf' }));
+  })
+  .catch(err => {
+    console.warn('Could not load default PDF, falling back to demo():', err);
+    demo();
+  });
 </script>
 
 <script>
