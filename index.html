@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Flipbook PDF Viewer</title>
+<title>Portfolio</title>
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 --bg:#000;--bg2:#0a0a0f;--fg:#f0f0f5;--mut:#a9a9b8;--line:rgba(255,255,255,.3);--edge:#3c3c44;--edge2:#2b2b32}
@@ -94,7 +94,7 @@ body.dragging #drop{opacity:1}
   <i class="sep"></i>
   <button id="rl" aria-label="Rotate left">↺</button><button id="rr" aria-label="Rotate right">↻</button>
   <i class="sep"></i>
-  <button id="pg">Pages</button><button id="fs">Fullscreen</button><button id="demo">Demo</button>
+  <button id="pg">Pages</button><button id="fs">Fullscreen</button><button id="demo">Portfolio</button>
 </div>
 <div id="drop">Drop PDF</div>
 
@@ -381,8 +381,11 @@ function openBook(n,r,fn){
 async function loadPdf(file){
   if(!file)return;
   if(file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name))return;
+  showDoc({data:await file.arrayBuffer()});
+}
+async function showDoc(src){
   try{
-    const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    const doc=await pdfjsLib.getDocument(src).promise;
     const v=(await doc.getPage(1)).getViewport({scale:1});
     openBook(doc.numPages,v.width/v.height,async(n,h)=>{
       const pg=await doc.getPage(n),b=pg.getViewport({scale:1}),vp=pg.getViewport({scale:h/b.height});
@@ -397,38 +400,19 @@ addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('
 addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dragging')});
 addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('dragging');loadPdf(e.dataTransfer.files[0])});
 
-function demo(){
-  const T=[['Music of','the pages'],['Every page','','turns','','with the','weight of light'],['','Drag the corner','','and the paper','curls','','under your hand'],['Pinch or scroll','to zoom in'],['','Double-click','to zoom fast'],['Open','your own PDF','','to read it','here'],['','','The end']];
-  openBook(T.length+1,.75,async(n,h)=>{
-    const c=document.createElement('canvas');c.height=h;c.width=Math.round(h*.75);const x=c.getContext('2d'),w=c.width;
-    x.fillStyle='#0b0b0c';x.fillRect(0,0,w,h);
-    let s=n*9301+49297;const rnd=()=>(s=(s*9301+49297)%233280)/233280;
-    for(let i=0;i<160;i++){x.fillStyle=`rgba(255,255,255,${.15+rnd()*.5})`;const r=rnd()<.03?1.6:.7;x.fillRect(rnd()*w,rnd()*h,r,r)}
-    const lines=T[(n-1)%T.length];x.fillStyle='#fff';x.font=`${h*.034}px "Helvetica Neue",Arial,sans-serif`;
-    if(n===1){x.textAlign='center';x.font=`${h*.05}px "Helvetica Neue",Arial,sans-serif`;lines.forEach((l,i)=>x.fillText(l.toUpperCase(),w/2,h*.45+i*h*.07))}
-    else{
-      lines.forEach((l,i)=>{x.textAlign=(n+i)%3?'left':'right';x.fillText(l.toUpperCase(),(n+i)%3?w*.1+((i*7)%3)*w*.08:w*.9,h*.12+i*h*.056)});
-      x.textAlign='center';x.font=`${h*.022}px "Helvetica Neue",Arial,sans-serif`;x.fillStyle='#888';x.fillText(n,w/2,h*.95);
-    }
-    return c;
-  });
+/* ---------- default document: portfolio.pdf next to this file (or ?pdf=other.pdf) ---------- */
+function note(t){let n=document.getElementById('note');if(!n){n=document.createElement('div');n.id='note';n.style.cssText='position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:60;padding:10px 18px;border-radius:999px;font-size:12px;letter-spacing:.08em;color:#fff;background:rgba(20,20,28,.7);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(14px)';document.body.appendChild(n)}n.textContent=t;n.style.display=t?'block':'none'}
+async function loadDefault(){
+  const url=new URLSearchParams(location.search).get('pdf')||'portfolio.pdf';
+  note('Loading '+url+'…');
+  try{
+    const r=await fetch(url,{cache:'no-cache'});            // revalidate, so a re-uploaded PDF shows up straight away
+    if(!r.ok)throw new Error(r.status);
+    await showDoc({data:await r.arrayBuffer()});note('');
+  }catch(e){console.error(e);note('Could not load '+url+' — use Open PDF, or drop a PDF here')}
 }
-$('#demo').onclick=demo;
-size();
-const defaultPdfUrl = 'https://raw.githubusercontent.com/azzrdty/Flipbook-PDF-Viewer/blob/b708ff2fea3ddd1e9df84c09a0bc150a4c473ede/Portfolio%20Sertifikasi%20-%20Web%20Viewer.pdf'; // <- put your PDF at this path in the repo (or use a full URL)
-fetch(defaultPdfUrl)
-  .then(res => {
-    if (!res.ok) throw new Error('Fetch failed: ' + res.status);
-    return res.arrayBuffer();
-  })
-  .then(ab => {
-    // create a File-like object so loadPdf() accepts it
-    loadPdf(new File([ab], 'https://raw.githubusercontent.com/azzrdty/Flipbook-PDF-Viewer/blob/b708ff2fea3ddd1e9df84c09a0bc150a4c473ede/Portfolio%20Sertifikasi%20-%20Web%20Viewer.pdf', { type: 'application/pdf' }));
-  })
-  .catch(err => {
-    console.warn('Could not load default PDF, falling back to demo():', err);
-    demo();
-  });
+$('#demo').onclick=loadDefault;
+size();loadDefault();
 </script>
 
 <script>
