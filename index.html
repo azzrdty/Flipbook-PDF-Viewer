@@ -53,7 +53,7 @@ body{--dock:92px}body.th{--dock:200px}
 #thumbs div{flex:none;height:84px;aspect-ratio:var(--r,.75);background:#fff center/cover;border:2px solid transparent;border-radius:2px;cursor:pointer;opacity:.75}
 #thumbs div.cur{border-color:var(--fg);opacity:1}
 /* floating island for the utility controls */
-#bar{position:relative;isolation:isolate;overflow:hidden;align-self:center;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;margin:0 12px calc(16px + env(safe-area-inset-bottom,0px));padding:7px 10px;max-width:calc(100% - 24px);border-radius:999px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.88);text-shadow:0 1px 2px rgba(0,0,0,.35);background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.015) 45%,rgba(255,255,255,.04));-webkit-backdrop-filter:blur(14px) saturate(1.6) brightness(1.05);backdrop-filter:blur(14px) saturate(1.6) brightness(1.05);border:1px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.34);border-left-color:rgba(255,255,255,.24);box-shadow:0 18px 50px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 28px rgba(255,255,255,.03)}
+#bar{position:relative;isolation:isolate;overflow:hidden;align-self:center;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;margin:0 12px calc(16px + env(safe-area-inset-bottom,0px));padding:7px 10px;max-width:calc(100% - 24px);border-radius:999px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.88);text-shadow:0 1px 2px rgba(0,0,0,.35);background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.02) 45%,rgba(255,255,255,.05)),rgba(8,10,20,.6);-webkit-backdrop-filter:blur(18px) saturate(1.5) brightness(.8);backdrop-filter:blur(18px) saturate(1.5) brightness(.8);border:1px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.34);border-left-color:rgba(255,255,255,.24);box-shadow:0 18px 50px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 28px rgba(255,255,255,.03)}
 #bar button,#bar label{background:none;border:0;border-radius:999px;color:var(--fg);font:inherit;letter-spacing:inherit;text-transform:inherit;padding:9px 13px;cursor:pointer;transition:background .15s,transform .15s}
 #bar button:hover,#bar label:hover{background:rgba(255,255,255,.14)}
 #bar button:active,#bar label:active{transform:scale(.94)}
@@ -67,9 +67,15 @@ body{--dock:92px}body.th{--dock:200px}
 @media (max-width:560px){#bar{border-radius:26px;padding:6px 8px}#bar button,#bar label{padding:8px 10px}#bar .sep{display:none}}
 #drop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .2s;font-size:20px;letter-spacing:.2em;text-transform:uppercase;background:color-mix(in srgb,var(--bg) 80%,transparent);z-index:9}
 body.dragging #drop{opacity:1}
+/* loading state: the book is hidden and only a message is shown until the first spread is ready */
+#loading{display:none;position:fixed;inset:0;align-items:center;justify-content:center;z-index:5;pointer-events:none;font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--fg);animation:ldpulse 1.6s ease-in-out infinite}
+body.loading #loading{display:flex}
+#stage{transition:padding .3s ease,opacity .6s ease}
+body.loading #stage,body.loading #thumbs{opacity:0;pointer-events:none}
+@keyframes ldpulse{50%{opacity:.35}}
 </style>
 </head>
-<body>
+<body class="loading">
 <canvas id="glow"></canvas>
 <div id="stage"><div id="zoomer">
   <div id="book">
@@ -84,18 +90,18 @@ body.dragging #drop{opacity:1}
 </div></div>
 <div id="thumbs"></div>
 <div id="bar" role="toolbar" aria-label="Viewer controls">
-  <label>Open PDF<input id="file" type="file" accept="application/pdf" hidden></label>
+  <button id="demo">Back to Cover</button>
   <i class="sep"></i>
+  <button id="pg">Pages</button>
   <button id="prev" aria-label="Previous page">←</button>
   <span class="nums"><input id="num" type="number" min="1" value="1" aria-label="Page number"><span>/ <span id="tot">0</span></span></span>
   <button id="next" aria-label="Next page">→</button>
   <i class="sep"></i>
-  <button id="zo" aria-label="Zoom out">−</button><button id="zi" aria-label="Zoom in">+</button>
+  <button id="fs">Fullscreen</button><button id="zo" aria-label="Zoom out">−</button><button id="zi" aria-label="Zoom in">+</button>
   <i class="sep"></i>
   <button id="rl" aria-label="Rotate left">↺</button><button id="rr" aria-label="Rotate right">↻</button>
-  <i class="sep"></i>
-  <button id="pg">Pages</button><button id="fs">Fullscreen</button><button id="demo">Portfolio</button>
 </div>
+<div id="loading" role="status">Loading the Portfolio...</div>
 <div id="drop">Drop PDF</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -376,7 +382,7 @@ function buildThumbs(){
 
 /* ---------- sources ---------- */
 function openBook(n,r,fn){
-  gen++;cache={};total=n;ratio=r;renderPage=fn;cur=0;side='R';z=1;tx=ty=0;qual=1;applyZ();size();buildThumbs();show();
+  gen++;cache={};total=n;ratio=r;renderPage=fn;cur=0;side='R';z=1;tx=ty=0;qual=1;applyZ();size();buildThumbs();return show();
 }
 async function loadPdf(file){
   if(!file)return;
@@ -387,31 +393,30 @@ async function showDoc(src){
   try{
     const doc=await pdfjsLib.getDocument(src).promise;
     const v=(await doc.getPage(1)).getViewport({scale:1});
-    openBook(doc.numPages,v.width/v.height,async(n,h)=>{
+    await openBook(doc.numPages,v.width/v.height,async(n,h)=>{
       const pg=await doc.getPage(n),b=pg.getViewport({scale:1}),vp=pg.getViewport({scale:h/b.height});
       const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;
       const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
       await pg.render({canvasContext:x,viewport:vp}).promise;return c;
     });
-  }catch(err){console.error(err)}
+  }catch(err){console.error(err);throw err}
 }
-$('#file').onchange=e=>loadPdf(e.target.files[0]);
 addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('dragging')});
 addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dragging')});
 addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('dragging');loadPdf(e.dataTransfer.files[0])});
 
 /* ---------- default document: portfolio.pdf next to this file (or ?pdf=other.pdf) ---------- */
-function note(t){let n=document.getElementById('note');if(!n){n=document.createElement('div');n.id='note';n.style.cssText='position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:60;padding:10px 18px;border-radius:999px;font-size:12px;letter-spacing:.08em;color:#fff;background:rgba(20,20,28,.7);border:1px solid rgba(255,255,255,.2);backdrop-filter:blur(14px)';document.body.appendChild(n)}n.textContent=t;n.style.display=t?'block':'none'}
 async function loadDefault(){
-  const url=new URLSearchParams(location.search).get('pdf')||'portfolio.pdf';
-  note('Loading '+url+'…');
+  const url=new URLSearchParams(location.search).get('pdf')||'portfolio.pdf',msg=document.getElementById('loading');
+  document.body.classList.add('loading');msg.textContent='Loading the Portfolio...';
   try{
     const r=await fetch(url,{cache:'no-cache'});            // revalidate, so a re-uploaded PDF shows up straight away
     if(!r.ok)throw new Error(r.status);
-    await showDoc({data:await r.arrayBuffer()});note('');
-  }catch(e){console.error(e);note('Could not load '+url+' — use Open PDF, or drop a PDF here')}
+    await showDoc({data:await r.arrayBuffer()});             // resolves once the first spread is painted
+    document.body.classList.remove('loading');
+  }catch(e){console.error(e);msg.textContent='Could not load '+url}
 }
-$('#demo').onclick=loadDefault;
+$('#demo').onclick=()=>goTo(1);
 size();loadDefault();
 </script>
 
