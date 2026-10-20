@@ -68,7 +68,10 @@ body{--dock:92px}body.th{--dock:200px}
 #drop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .2s;font-size:20px;letter-spacing:.2em;text-transform:uppercase;background:color-mix(in srgb,var(--bg) 80%,transparent);z-index:9}
 body.dragging #drop{opacity:1}
 /* loading state: the book is hidden and only a message is shown until the first spread is ready */
-#loading{display:none;position:fixed;inset:0;align-items:center;justify-content:center;z-index:5;pointer-events:none;font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--fg);animation:ldpulse 1.6s ease-in-out infinite}
+#loading{display:none;position:fixed;inset:0;align-items:center;justify-content:center;z-index:5;pointer-events:none;font-size:13px;letter-spacing:.24em;text-transform:uppercase;color:var(--fg);flex-direction:column;gap:16px}
+#ldtxt{animation:ldpulse 1.6s ease-in-out infinite}
+#ldbar{display:block;width:min(260px,60vw);height:2px;border-radius:2px;background:rgba(255,255,255,.16);overflow:hidden}
+#ldbar b{display:block;height:100%;width:0;background:rgba(255,255,255,.85);transition:width .15s linear}
 body.loading #loading{display:flex}
 #stage{transition:padding .3s ease,opacity .6s ease}
 body.loading #stage,body.loading #thumbs{opacity:0;pointer-events:none}
@@ -101,7 +104,7 @@ body.loading #stage,body.loading #thumbs{opacity:0;pointer-events:none}
   <i class="sep"></i>
   <button id="rl" aria-label="Rotate left">↺</button><button id="rr" aria-label="Rotate right">↻</button>
 </div>
-<div id="loading" role="status">Loading the Portfolio...</div>
+<div id="loading" role="status"><span id="ldtxt">Loading the Portfolio...</span><i id="ldbar"><b></b></i></div>
 <div id="drop">Drop PDF</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -389,9 +392,10 @@ async function loadPdf(file){
   if(file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name))return;
   showDoc({data:await file.arrayBuffer()});
 }
-async function showDoc(src){
+async function showDoc(src,stage){
   try{
     const doc=await pdfjsLib.getDocument(src).promise;
+    if(stage)stage(.95);
     const v=(await doc.getPage(1)).getViewport({scale:1});
     await openBook(doc.numPages,v.width/v.height,async(n,h)=>{
       const pg=await doc.getPage(n),b=pg.getViewport({scale:1}),vp=pg.getViewport({scale:h/b.height});
@@ -407,14 +411,26 @@ addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('d
 
 /* ---------- default document: portfolio.pdf next to this file (or ?pdf=other.pdf) ---------- */
 async function loadDefault(){
-  const url=new URLSearchParams(location.search).get('pdf')||'portfolio.pdf',msg=document.getElementById('loading');
-  document.body.classList.add('loading');msg.textContent='Loading the Portfolio...';
+  const url=new URLSearchParams(location.search).get('pdf')||'portfolio.pdf',txt=document.getElementById('ldtxt'),bar=document.querySelector('#ldbar b');
+  // real progress: bytes downloaded / Content-Length fills 0-90%, then parsing (95%) and the first spread (100%)
+  const setPct=p=>{p=Math.max(0,Math.min(1,p));txt.textContent='Loading the Portfolio... '+Math.round(p*100)+'%';bar.style.width=p*100+'%'};
+  document.body.classList.add('loading');document.getElementById('ldbar').style.display='block';setPct(0);
   try{
     const r=await fetch(url,{cache:'no-cache'});            // revalidate, so a re-uploaded PDF shows up straight away
     if(!r.ok)throw new Error(r.status);
-    await showDoc({data:await r.arrayBuffer()});             // resolves once the first spread is painted
-    document.body.classList.remove('loading');
-  }catch(e){console.error(e);msg.textContent='Could not load '+url}
+    const size=+r.headers.get('Content-Length')||0;
+    let data;
+    if(r.body&&size){
+      const rd=r.body.getReader(),parts=[];let got=0;
+      for(;;){const{done,value}=await rd.read();if(done)break;parts.push(value);got+=value.length;setPct(Math.min(.9,got/size*.9))}
+      data=new Uint8Array(got);let o=0;for(const p of parts){data.set(p,o);o+=p.length}
+    }else{                                                   // size unknown: no honest percentage for the download, so show a plain message
+      txt.textContent='Loading the Portfolio...';data=new Uint8Array(await r.arrayBuffer());
+    }
+    setPct(.9);
+    await showDoc({data},setPct);                            // resolves once the first spread is painted
+    setPct(1);document.body.classList.remove('loading');
+  }catch(e){console.error(e);txt.textContent='Could not load '+url;document.getElementById('ldbar').style.display='none'}
 }
 $('#demo').onclick=()=>goTo(1);
 size();loadDefault();
